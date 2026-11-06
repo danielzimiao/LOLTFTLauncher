@@ -1,5 +1,6 @@
 import threading
 import tkinter as tk
+from queue import Empty, Queue
 from tkinter import ttk, messagebox, font
 import sv_ttk
 
@@ -27,6 +28,10 @@ class App:
         self.locale_dict = {value: key for key, value in LOCALE_CODES.items()}
         self.game_client = config.get("GameClient", "")
         self.observers: [Observer] = []
+        self.update_check_queue = Queue()
+        self.metadata_detection_queue = Queue()
+        self.metadata_detection_running = False
+        self.metadata_loading = True
 
         self.root = tk.Tk()
         self.theme: str = self.ui_config.get("Theme", "light")
@@ -37,7 +42,7 @@ class App:
         change_font("Microsoft YaHei UI")
         self.root.title(f"{APP_NAME} v{VERSION}")
         self.window_width = 350
-        self.window_height = 420
+        self.window_height = 490
         self.control_padding = 10
         self.layout_padding = 15
 
@@ -51,6 +56,12 @@ class App:
         self.root.maxsize(self.window_width + 50, self.window_height + 50)
         # self.root.resizable(False, False)
 
+        saved_product_scope = self.config.get("ProductScope", "all")
+        valid_product_scopes = ["all", *SUPPORTED_PRODUCTS]
+        if saved_product_scope not in valid_product_scopes:
+            saved_product_scope = "all"
+        self.product_scope_var = tk.StringVar(value=saved_product_scope)
+
         self.create_menu_bar()
         self.selected_locale = config.get("Locale", "zh_CN")
         if self.selected_locale not in LOCALE_CODES.keys():
@@ -59,6 +70,7 @@ class App:
         self.create_quick_chat_groupbox()
 
         self.create_status_bar()
+        self.create_metadata_progress()
         self.create_launch_button()
         self.tray_app = self.create_tray_app()
         self.tray_thread = threading.Thread(target=self.tray_app.run)
@@ -101,6 +113,23 @@ class App:
         self.setting_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.setting_menu.add_command(label="自动检测游戏配置文件", command=self.detect_metadata_file)
         self.setting_menu.add_command(label="手动选择游戏配置文件", command=self.choose_metadata_file)
+        self.product_scope_menu = tk.Menu(self.setting_menu, tearoff=0)
+        self.product_scope_menu.add_radiobutton(
+            label="英雄联盟 & 云顶之弈（默认）",
+            variable=self.product_scope_var,
+            value="all",
+            command=self.on_product_scope_changed)
+        self.product_scope_menu.add_radiobutton(
+            label="仅英雄联盟（可能影响跨客户端跳转）",
+            variable=self.product_scope_var,
+            value="league_of_legends",
+            command=self.on_product_scope_changed)
+        self.product_scope_menu.add_radiobutton(
+            label="仅云顶之弈（可能影响跨客户端跳转）",
+            variable=self.product_scope_var,
+            value="teamfighttactics",
+            command=self.on_product_scope_changed)
+        self.setting_menu.add_cascade(label="语言适用范围  ▶", menu=self.product_scope_menu)
         self.setting_menu.add_command(label="设置进程名称", command=self.set_process_name)
         self.setting_menu.add_separator()
         self.setting_menu.add_command(label="切换颜色主题", command=lambda: self.root.after(0, self.toggle_theme))
@@ -118,7 +147,7 @@ class App:
         self.theme = sv_ttk.get_theme()
         self.quick_chat_warning_label.config(background=THEME_COLOR[self.theme]["warning_bg"], foreground=THEME_COLOR[self.theme]["warning_fg"])
         self.quick_chat_warning_label.tag_config("link", foreground=THEME_COLOR[self.theme]["accent"], underline=True)
-        self.create_custom_button_style()
+        self.draw_launch_button()
 
     def create_locale_groupbox(self):
         self.locale_groupbox = ttk.LabelFrame(self.root, text="语言设置", style='Card.TFrame')
@@ -211,21 +240,135 @@ class App:
             create_quick_chat_file(CONFIG_FILENAME)
         subprocess.run(['notepad.exe', QUICK_CHAT_FILENAME], check=False)
 
-    def create_custom_button_style(self):
+    def get_launch_button_colors(self, state="normal"):
         style = ttk.Style()
-        style.configure('CustomAccent.TButton', font=('Microsoft YaHei', 16, 'bold'))
+        fallback = {
+            "light": {
+                "normal": "#005fb8",
+                "active": "#1975c5",
+                "pressed": "#004c93",
+                "disabled": "#d6d6d6",
+                "foreground": "#ffffff",
+                "disabled_foreground": "#767676",
+                "surface": "#f9f9f9",
+            },
+            "dark": {
+                "normal": "#60cdff",
+                "active": "#76d5ff",
+                "pressed": "#4cb4e1",
+                "disabled": "#3a3a3a",
+                "foreground": "#000000",
+                "disabled_foreground": "#8a8a8a",
+                "surface": "#1c1c1c",
+            },
+        }
+        palette = fallback["dark" if "dark" in self.theme.lower() else "light"]
+        background = palette[state]
+        foreground = palette["disabled_foreground"] if state == "disabled" else palette["foreground"]
+        surface = style.lookup("TFrame", "background") or palette["surface"]
+        return background, foreground, surface
+
+    def draw_launch_button(self, state="normal"):
+        if not hasattr(self, "launch_button"):
+            return
+        if self.metadata_loading:
+            state = "disabled"
+        width = max(self.launch_button.winfo_width(), self.window_width - (self.layout_padding * 2))
+        height = 72
+        background, foreground, surface = self.get_launch_button_colors(state)
+        self.launch_button.configure(background=surface)
+        self.launch_button.delete("all")
+
+        radius = 9
+        left = 1
+        top = 1
+        right = width - 1
+        bottom = height - 1
+        points = [
+            left + radius, top,
+            right - radius, top,
+            right, top,
+            right, top + radius,
+            right, bottom - radius,
+            right, bottom,
+            right - radius, bottom,
+            left + radius, bottom,
+            left, bottom,
+            left, bottom - radius,
+            left, top + radius,
+            left, top,
+        ]
+        self.launch_button.create_polygon(points, smooth=True, fill=background, outline=background)
+
+        divider_x = int(width * 0.60)
+        left_center_x = int(width * 0.30)
+        right_center_x = int(width * 0.81)
+        self.launch_button.create_text(
+            left_center_x, 23,
+            text="英雄联盟",
+            fill=foreground,
+            font=("Microsoft YaHei UI", 12, "bold"))
+        self.launch_button.create_text(
+            left_center_x, 49,
+            text="云顶之弈",
+            fill=foreground,
+            font=("Microsoft YaHei UI", 12, "bold"))
+        self.launch_button.create_line(
+            divider_x, 13, divider_x, height - 13,
+            fill=foreground,
+            width=1)
+        self.launch_button.create_text(
+            right_center_x, height // 2,
+            text="启动！",
+            fill=foreground,
+            font=("Microsoft YaHei UI", 18, "bold"))
+
+    def on_launch_button_release(self, event):
+        if self.metadata_loading:
+            self.update_status("正在查找客户端，请稍候...")
+            self.draw_launch_button("disabled")
+            return
+        self.draw_launch_button("active")
+        if 0 <= event.x <= self.launch_button.winfo_width() and 0 <= event.y <= self.launch_button.winfo_height():
+            self.start()
 
     def create_launch_button(self):
-        self.create_custom_button_style()
-        self.image = tk.PhotoImage(file=get_asset("button_icon.png"))
-        self.launch_button = ttk.Button(self.root, text="英雄联盟，启动！", image=self.image, compound=tk.LEFT,
-                                        command=self.start, style="CustomAccent.TButton")
-        self.launch_button.pack(side=tk.BOTTOM, pady=self.layout_padding)
+        self.launch_button = tk.Canvas(
+            self.root,
+            height=72,
+            cursor="hand2",
+            highlightthickness=0,
+            takefocus=True)
+        self.launch_button.pack(
+            side=tk.BOTTOM,
+            fill=tk.X,
+            padx=self.layout_padding,
+            pady=self.layout_padding)
+        self.launch_button.bind("<Configure>", lambda event: self.draw_launch_button())
+        self.launch_button.bind("<Enter>", lambda event: self.draw_launch_button("active"))
+        self.launch_button.bind("<Leave>", lambda event: self.draw_launch_button())
+        self.launch_button.bind("<ButtonPress-1>", lambda event: self.draw_launch_button("pressed"))
+        self.launch_button.bind("<ButtonRelease-1>", self.on_launch_button_release)
+        self.launch_button.bind("<FocusIn>", lambda event: self.draw_launch_button("active"))
+        self.launch_button.bind("<FocusOut>", lambda event: self.draw_launch_button())
+        self.launch_button.bind("<Return>", lambda event: self.start())
+        self.launch_button.bind("<space>", lambda event: self.start())
+        self.draw_launch_button()
 
     def create_status_bar(self):
         self.status_var = tk.StringVar(value="准备就绪")
         self.status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.RIDGE, anchor=tk.W, foreground="gray")
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def create_metadata_progress(self):
+        self.metadata_progress = ttk.Progressbar(self.root, mode="indeterminate")
+        self.metadata_progress.pack(
+            side=tk.BOTTOM,
+            fill=tk.X,
+            padx=self.layout_padding,
+            pady=(0, self.control_padding))
+        self.metadata_progress.start(12)
+        self.update_status("正在查找英雄联盟 & 云顶之弈客户端...")
 
     def update_status(self, message):
         self.status_var.set(message)
@@ -241,9 +384,19 @@ class App:
         self.app_name_label.pack(padx=self.control_padding, pady=pady)
         accent_color = THEME_COLOR[self.theme]["accent"]
 
-        self.author_label = tk.Label(self.about_window, text="作者：Chenglong Ma", fg=accent_color, cursor="hand2")
+        self.author_label = tk.Label(self.about_window, text="原作者：Chenglong Ma", fg=accent_color, cursor="hand2")
         self.author_label.pack(padx=self.control_padding, pady=pady)
         self.author_label.bind("<Button-1>", lambda event: open_my_homepage())
+
+        self.tft_author_label = tk.Label(
+            self.about_window,
+            text="TFT 适配作者：danielzimiao",
+            fg=accent_color,
+            cursor="hand2")
+        self.tft_author_label.pack(padx=self.control_padding, pady=pady)
+        self.tft_author_label.bind(
+            "<Button-1>",
+            lambda event: open_web("https://github.com/danielzimiao"))
 
         self.homepage_label = tk.Label(self.about_window, text=f"GitHub：{REPO_NAME}", fg=accent_color, cursor="hand2")
         self.homepage_label.pack(padx=self.control_padding, pady=pady)
@@ -258,6 +411,22 @@ class App:
     def no_new_version_fn(self):
         messagebox.showinfo("检查更新", "当前已是最新版本")
         self.update_status("当前已是最新版本")
+
+    def start_background_update_check(self):
+        def fetch_update():
+            self.update_check_queue.put(get_updates(REPO_NAME, VERSION))
+
+        threading.Thread(target=fetch_update, daemon=True).start()
+        self.root.after(100, self.poll_background_update_check)
+
+    def poll_background_update_check(self):
+        try:
+            new_version, html_url = self.update_check_queue.get_nowait()
+        except Empty:
+            self.root.after(100, self.poll_background_update_check)
+            return
+        if new_version:
+            prompt_for_update(new_version, html_url)
 
     def start_game(self, *settings):
         self.update_status("正在启动游戏...")
@@ -274,14 +443,23 @@ class App:
                 return
             game_clients = [choice]
 
-        self.update_status("英雄联盟，启动！")
+        self.update_status("语言设置完成，正在启动 Riot 客户端！")
         self.game_client = os.path.normpath(game_clients[0])
         subprocess.run(['explorer.exe', self.game_client], check=False)
 
     def start(self):
+        if self.metadata_loading:
+            self.update_status("正在查找客户端，请稍候...")
+            return
         self.update_status("正在更新配置文件...")
         settings = []
-        for setting_file in self.setting_files:
+        active_setting_files = self.get_active_setting_files()
+        if len(active_setting_files) == 0:
+            selected_names = "、".join(PRODUCT_DISPLAY_NAMES[product] for product in self.get_selected_products())
+            messagebox.showerror("错误", f"未找到{selected_names}的有效配置文件，请先自动检测或手动选择。")
+            return
+
+        for setting_file in active_setting_files:
             setting = update_settings(setting_file, self.selected_locale, msg_callback_fn=self.update_status)
             if setting:
                 settings.append(setting)
@@ -290,7 +468,7 @@ class App:
             messagebox.showerror("错误", "配置文件更新失败，无法启动游戏。")
             return
 
-        self.start_observers()
+        self.start_observers(active_setting_files)
         self.start_game(*settings)
         self.on_window_minimizing(True)
 
@@ -303,9 +481,10 @@ class App:
                 print("Observer stopped")
         self.observers = []
 
-    def start_observers(self):
-        event_handler = FileWatcher(*self.setting_files, selected_locale=self.selected_locale)
-        unique_dirs = set(os.path.dirname(file) for file in self.setting_files)
+    def start_observers(self, setting_files=None):
+        setting_files = setting_files or self.get_active_setting_files()
+        event_handler = FileWatcher(*setting_files, selected_locale=self.selected_locale)
+        unique_dirs = set(os.path.dirname(file) for file in setting_files)
         for directory in unique_dirs:
             observer = Observer()
             observer.schedule(event_handler, path=directory, recursive=False)
@@ -313,27 +492,118 @@ class App:
             self.observers.append(observer)
         print(f"Start Watching...")
 
+    def get_selected_products(self):
+        product_scope = self.product_scope_var.get()
+        if product_scope == "all":
+            return list(SUPPORTED_PRODUCTS)
+        return [product_scope]
+
+    def get_active_setting_files(self):
+        selected_products = set(self.get_selected_products())
+        return [setting_file for setting_file in self.setting_files
+                if get_metadata_product(setting_file) in selected_products]
+
+    def on_product_scope_changed(self):
+        self.stop_observers()
+        selected_products = self.get_selected_products()
+        selected_names = " & ".join(PRODUCT_DISPLAY_NAMES[product] for product in selected_products)
+        self.update_status(f"语言适用范围：{selected_names}")
+        self.sync_config()
+        if self.product_scope_var.get() != "all":
+            messagebox.showwarning(
+                "仅修改一个游戏可能导致问题",
+                f"当前已选择仅修改{selected_names}。\n\n"
+                "英雄联盟与云顶之弈会共享 Riot Client 的部分启动和跳转流程。"
+                "如果从英雄联盟客户端跳转到云顶之弈，或在两个游戏之间切换，"
+                "未同步修改的客户端可能出现语言不一致、翻译不完整，或被 Riot 恢复为默认语言。\n\n"
+                "如果没有特殊需求，建议选择“英雄联盟 & 云顶之弈（默认）”。")
+
+    def start_background_metadata_detection(self):
+        if self.metadata_detection_running:
+            return
+        self.metadata_detection_running = True
+        self.metadata_loading = True
+        self.metadata_progress.pack(
+            side=tk.BOTTOM,
+            fill=tk.X,
+            padx=self.layout_padding,
+            pady=(0, self.control_padding),
+            before=self.launch_button)
+        self.metadata_progress.start(12)
+        self.launch_button.configure(cursor="")
+        self.draw_launch_button("disabled")
+        self.update_status("正在查找英雄联盟 & 云顶之弈客户端...")
+
+        def detect_metadata():
+            try:
+                detected_files = detect_metadata_file()
+                setting_files = filter_valid_metadata_files(
+                    *to_list(self.config.get('SettingFile', [])),
+                    *detected_files)
+                self.metadata_detection_queue.put((setting_files, None))
+            except Exception as error:
+                self.metadata_detection_queue.put(([], error))
+
+        threading.Thread(target=detect_metadata, daemon=True).start()
+        self.root.after(100, self.poll_background_metadata_detection)
+
+    def poll_background_metadata_detection(self):
+        try:
+            setting_files, error = self.metadata_detection_queue.get_nowait()
+        except Empty:
+            self.root.after(100, self.poll_background_metadata_detection)
+            return
+
+        self.metadata_detection_running = False
+        self.metadata_loading = False
+        self.metadata_progress.stop()
+        self.metadata_progress.pack_forget()
+        self.launch_button.configure(cursor="hand2")
+        self.draw_launch_button()
+
+        if error:
+            self.update_status("查找客户端配置时出现错误")
+            messagebox.showerror("查找失败", f"查找客户端配置时出现错误：\n{error}")
+            return
+
+        if setting_files:
+            self.setting_files = setting_files
+            self.sync_config()
+            products = {
+                get_metadata_product(setting_file)
+                for setting_file in setting_files
+                if get_metadata_product(setting_file)
+            }
+            product_names = " & ".join(
+                PRODUCT_DISPLAY_NAMES[product]
+                for product in SUPPORTED_PRODUCTS
+                if product in products)
+            self.update_status(f"已找到{product_names}配置，共 {len(setting_files)} 个")
+            return
+
+        self.update_status("未找到英雄联盟或云顶之弈配置")
+        choose_manually = messagebox.askyesno(
+            "未找到客户端配置",
+            "未找到英雄联盟或云顶之弈的 Riot 配置文件。\n是否手动选择 product_settings.yaml？")
+        if choose_manually:
+            self.choose_metadata_file(confirm=False)
+
     def detect_metadata_file(self):
         is_yes = tk.messagebox.askyesno("提示", "您确定要重新检测以修改已有配置？")
         if is_yes:
-            setting_files = detect_metadata_file()
-            if setting_files:
-                self.setting_files = setting_files
-                self.sync_config()
-                msg = "游戏配置文件已更新"
-            else:
-                msg = "未找到有效配置，将继续使用之前的配置"
-            self.update_status(msg)
-            tk.messagebox.showinfo("提示", msg)
+            self.start_background_metadata_detection()
 
-    def choose_metadata_file(self):
-        is_yes = tk.messagebox.askyesno("提示", "已自动检测到游戏配置文件，您确定要手动选择吗？")
+    def choose_metadata_file(self, confirm=True):
+        is_yes = not confirm or tk.messagebox.askyesno("提示", "已自动检测到游戏配置文件，您确定要手动选择吗？")
         if is_yes:
-            selected_file = open_metadata_file_dialog(title="请选择 league_of_legends.live.product_settings.yaml 文件",
-                                                      file_types=[('Riot 配置文件', '*.yaml'), ('所有文件', '*.*')],
-                                                      initial_dir=DEFAULT_METADATA_DIR, initial_file=DEFAULT_METADATA_FILE)
-            if selected_file:
-                self.setting_files = [selected_file]
+            selected_files = open_metadata_file_dialog(
+                title="请选择英雄联盟和/或云顶之弈的 product_settings.yaml 文件",
+                file_types=[('Riot 配置文件', '*.yaml'), ('所有文件', '*.*')],
+                initial_dir=DEFAULT_METADATA_DIR,
+                initial_file=DEFAULT_METADATA_FILE,
+                multiple=True)
+            if selected_files:
+                self.setting_files = selected_files
                 self.sync_config()
                 msg = "游戏配置文件已更新"
             else:
@@ -370,6 +640,8 @@ class App:
             self.on_window_closing(self.tray_app)
 
     def run(self):
+        self.root.after(50, self.start_background_metadata_detection)
+        self.root.after(250, self.start_background_update_check)
         self.tray_thread.start()
         self.root.mainloop()
         self.tray_thread.join()
@@ -377,11 +649,12 @@ class App:
     def sync_config(self):
         default_config = {
             "@注意": r"请使用\或/做为路径分隔符，如 C:\ProgramData 或 C:/ProgramData",
-            "@SettingFile": "请在下方填写 league_of_legends.live.product_settings.yaml 文件路径",
+            "@SettingFile": "英雄联盟和云顶之弈 product_settings.yaml 文件路径列表",
             "SettingFile": self.setting_files,
             "@GameClient": "请在下方填写 RiotClientServices.exe 文件路径",
             "GameClient": self.game_client,
             "Locale": self.selected_locale,
+            "ProductScope": self.product_scope_var.get(),
             "MinimizeOnClosing": self.minimize_on_closing.get(),
             "Process Name": self.config.get("Process Name", "League of Legends.exe"),
             "QuickChatEnabled": self.quick_chat_enabled.get(),
@@ -398,7 +671,7 @@ class App:
 
     def on_window_closing(self, icon: pystray.Icon = None, item=None):
 
-        close = messagebox.askyesno("退出", "退出后再启动游戏时文本和语音将恢复为默认设置\n您确定要退出吗？")
+        close = messagebox.askyesno("退出", "退出后再启动英雄联盟或云顶之弈时，语言可能恢复为默认设置\n您确定要退出吗？")
         if close:
             self.stop_observers()
             if icon:
