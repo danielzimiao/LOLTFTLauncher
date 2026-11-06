@@ -5,20 +5,44 @@
 <div align="center">
 
 ![macOS Version](https://img.shields.io/badge/WinOS_Version-10%2B-green?logo=windows)
-[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ChenglongMa/LOLauncher?include_prereleases)](https://github.com/ChenglongMa/LOLauncher/releases/latest)
-[![GitHub License](https://img.shields.io/github/license/ChenglongMa/LOLauncher)](https://github.com/ChenglongMa/LOLauncher/blob/main/LICENSE)
+[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/danielzimiao/TFTLauncher?include_prereleases)](https://github.com/danielzimiao/TFTLauncher/releases/latest)
+[![GitHub License](https://img.shields.io/github/license/danielzimiao/TFTLauncher)](https://github.com/danielzimiao/TFTLauncher/blob/main/LICENSE)
 [![Bilibili](https://img.shields.io/badge/使用教程-Bilibili-1E88E5?logo=bilibili)](https://www.bilibili.com/video/BV1vk3keeEfd/?share_source=copy_web&vd_source=cc52ec064b8a1a36acc686a244981a42)
 [![Bilibili](https://img.shields.io/badge/手动设置教程-Bilibili-1E88E5?logo=bilibili)](https://www.bilibili.com/video/BV1Zs421P7EB)
-[![Downloads](https://img.shields.io/github/downloads/ChenglongMa/LOLauncher/total)](https://github.com/ChenglongMa/LOLauncher/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/danielzimiao/TFTLauncher/total)](https://github.com/danielzimiao/TFTLauncher/releases/latest)
 
 </div>
 
-# 英雄联盟，启动！
+# 英雄联盟 & 云顶之弈，启动！
 
-* 该程序用于修改英雄联盟的文本语言，比如 **简体中文(国服)**，这样游戏文本语言为**国服翻译**，语音为**国服语音**。
+* 该程序用于修改英雄联盟和独立版云顶之弈（Teamfight Tactics）的语言，例如选择 **简体中文（国服）**。
+* 程序会自动检测 LOL 与 TFT 的 `live` / `pbe` 配置文件；默认点击一次启动按钮会将两者统一修改为所选语言并持续监控，防止 Riot 更新配置后恢复默认值。
 * 自 [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) 版本后，该程序新增 **一键喊话**。
-* 该程序**目前**在 Windows 系统下测试通过。MacOS 版本正在开发中。
-* 该程序目前适用于英雄联盟的14.9版本，特别是 [Riot Vanguard](https://www.leagueoflegends.com/en-us/news/game-updates/patch-14-9-notes/#patch-vanguard) 发布后，以前的修改语言的方法已经失效。
+* 该程序目前面向 Windows 10/11；独立 TFT 客户端适配从 v1.3 开始提供。
+
+## v1.3：独立 TFT 客户端适配与启动优化
+
+Riot 将 TFT 拆分为独立客户端后，它使用单独的产品配置：
+
+- 英雄联盟：`league_of_legends.live` / `league_of_legends.pbe`
+- 云顶之弈：`teamfighttactics.live` / `teamfighttactics.pbe`
+
+本版本会同时查找这些产品的 `product_settings.yaml`。只要账户已按 Riot 的默认流程安装 LOL 和 TFT，无需额外指定 TFT 安装目录；选择语言并点击启动按钮后，程序会同时更新已安装的 LOL 与 TFT。TFT 未安装时，程序仍可照常只处理 LOL。
+
+如需只修改其中一个游戏，可在带有右箭头的二级菜单“设置 → 语言适用范围 ▶”中选择“仅英雄联盟”或“仅云顶之弈”。默认值为“英雄联盟 & 云顶之弈”，选择会保存在 `config.json` 中。
+
+> [!WARNING]
+> 仅修改一个游戏时，程序会显示风险提示。英雄联盟与云顶之弈会共享 Riot Client 的部分启动和跳转流程；从英雄联盟客户端跳转到云顶之弈或在两个游戏之间切换时，语言设置不同步可能导致语言不一致、翻译不完整，或被 Riot 恢复为默认语言。没有特殊需求时建议保留默认范围。
+
+> [!IMPORTANT]
+> 首次测试建议先完全退出 Riot Client、LOL 与 TFT，再运行本程序。点击启动后请保持程序在后台，等待 Riot Client 完成所需语言资源更新，然后进入游戏检查文本。`一键喊话`仍是英雄联盟专用功能。
+
+### 启动性能优化
+
+- 配置探测直接读取 Windows 的 `%ProgramData%\Riot Games\Metadata`，不再遍历所有逻辑盘和离线映射盘。
+- 主界面会先显示，再在后台查找客户端；查找期间显示进度条并暂时禁用启动按钮，避免用户因无反馈而反复双击。
+- 自动更新检查改为窗口显示后在后台执行，不再阻塞主界面启动。
+- 移除 PyGithub 及其间接依赖，缩小单文件打包体积并减少解压加载时间。
 
 > [!NOTE]
 > 虽然该软件看上去 **久不更新**，但这是因为该机制还有效。如果失效，我会马上修复的。
@@ -38,9 +62,10 @@ _谢谢关注！_
 
 ## 安装并运行
 
-1. 前往 [Release 页面](https://github.com/ChenglongMa/LOLauncher/releases/latest) 下载最新版本的 [LOLauncher.zip](https://github.com/ChenglongMa/LOLauncher/releases/latest/download/LOLauncher.zip)。
-2. 解压缩 `LOLauncher.zip` 到任意目录。
-3. 运行 `LOLauncher.exe`。
+1. 前往 [Release 页面](https://github.com/danielzimiao/TFTLauncher/releases/latest) 下载最新版 ZIP，并解压到任意目录。
+2. 完全退出正在运行的 Riot Client、英雄联盟和云顶之弈，然后运行 `LOLauncher.exe`。
+3. 选择目标语言。程序默认同时处理英雄联盟 & 云顶之弈；如有特殊需求，可通过“设置 → 语言适用范围 ▶”只选择其中一个。
+4. 点击启动按钮并保持程序在后台，等待 Riot Client 完成所需语言资源更新后再进入游戏。
 
 ### 程序界面
 
@@ -48,15 +73,18 @@ _谢谢关注！_
 
 ## 版本比较
 
-| 版本号        | [v1.0.1](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.1) | [v1.0.2](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.2) | [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) | [v1.2.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.2.0) |
-|------------|------------------------------------------------------------------------|------------------------------------------------------------------------|------------------------------------------------------------------------|------------------------------------------------------------------------|
-| Win 10 适用  | ✔                                                                      | ✔                                                                      | ✔                                                                      | ✔                                                                      |
-| Win 11 适用  | X                                                                      | ✔                                                                      | ✔                                                                      | ✔                                                                      |
-| **非**管理员权限 | X                                                                      | ✔                                                                      | ✔                                                                      | ✔                                                                      |
-| 后台运行       | X                                                                      | ✔                                                                      | ✔                                                                      | ✔                                                                      |
-| 自动更新       | ✔                                                                      | ✔                                                                      | ✔                                                                      | ✔                                                                      |
-| 一键喊话       | X                                                                      | X                                                                      | ✔                                                                      | ✔                                                                      |
-| 暗黑模式       | X                                                                      | X                                                                      | X                                                                      | ✔                                                                      |
+| 功能 | [v1.0.1](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.1) | [v1.0.2](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.2) | [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) | [v1.2.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.2.0) | v1.3 |
+|---|---:|---:|---:|---:|---:|
+| Windows 10 | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Windows 11 | X | ✔ | ✔ | ✔ | ✔ |
+| **非**管理员权限 | X | ✔ | ✔ | ✔ | ✔ |
+| 后台运行 | X | ✔ | ✔ | ✔ | ✔ |
+| 自动更新 | ✔ | ✔ | ✔ | ✔ | ✔ |
+| 一键喊话 | X | X | ✔ | ✔ | ✔ |
+| 暗黑模式 | X | X | X | ✔ | ✔ |
+| 独立云顶之弈客户端支持 | X | X | X | X | ✔ |
+| 英雄联盟 & 云顶之弈适用范围选择 | X | X | X | X | ✔ |
+| 快速启动优化 | X | X | X | X | ✔ |
 
 
 ### 注意 
@@ -85,16 +113,18 @@ _谢谢关注！_
 
 ### 1. 修改游戏语言
 
-如 [程序界面](#程序界面) 所示，启动游戏前，您可以选择游戏的语言。
+如 [程序界面](#程序界面) 所示，启动游戏前，您可以选择游戏语言。程序会把同一语言应用到自动检测到的 LOL 与 TFT 配置。
 
 > [!NOTE]
 > 
 > 只有**简体中文（国服）** 是带有语音的，其他语言只有文本。
 > 
+> TFT 的可用文本与语音资源由 Riot 当前版本决定；本程序负责设置客户端语言，不修改游戏资源文件。
+>
 
 ### 2. 一键喊话
 
-您可以设置一键喊话的**快捷键**以及**喊话内容**。
+您可以设置英雄联盟一键喊话的**快捷键**以及**喊话内容**。独立 TFT 客户端不使用该功能。
 
 > [!IMPORTANT]
 > 
@@ -111,21 +141,26 @@ _谢谢关注！_
 
 ```json
 {
-  "SettingFile": "C:\\ProgramData\\Riot Games\\Metadata\\league_of_legends.live\\league_of_legends.live.product_settings.yaml",
-  "GameClient": "C:/Games/Riot Games/Riot Client/RiotClientServices.exe",
-  "Locale": "zh_CN"
+  "SettingFile": [
+    "C:\\ProgramData\\Riot Games\\Metadata\\league_of_legends.live\\league_of_legends.live.product_settings.yaml",
+    "C:\\ProgramData\\Riot Games\\Metadata\\teamfighttactics.live\\teamfighttactics.live.product_settings.yaml"
+  ],
+  "GameClient": "D:/Riot Games/Riot Client/RiotClientServices.exe",
+  "Locale": "zh_CN",
+  "ProductScope": "all"
 }
 ```
 
-- `SettingFile`：英雄联盟的 `league_of_legends.live.product_settings.yaml` 配置文件路径。
+- `SettingFile`：Riot 产品配置文件路径列表，可同时包含英雄联盟与云顶之弈的 `live` / `pbe` YAML。程序通常会自动检测，无需手工填写。
 - `GameClient`：Riot 客户端<img src="./docs/lol_client.ico" alt="Riot 客户端 icon" width="40px">的 `RiotClientServices.exe` 文件路径。
 - `Locale`：游戏语言，例如 `zh_CN` 为中文，`en_US` 为英文。
+- `ProductScope`：语言适用范围。`all` 表示同时修改两者，也可设为 `league_of_legends` 或 `teamfighttactics`。
 - **注意：路径中的 `\` 需要替换为 `\\`，或者使用 `/` （请参考以上示例）。**
 - 其他配置尽量从程序界面中修改，避免手动修改。
 
 ## 声明
 
-本项目是一个用于修改英雄联盟的文本语言和语音的工具，其目的是为了提供一个更好的游戏体验。它并不修改游戏的任何核心文件或者影响游戏的任何机制，也不提供任何形式的不公平优势。
+本项目是一个用于设置英雄联盟与云顶之弈客户端语言的工具，其目的是提供更好的游戏体验。它只修改 Riot 的产品设置 YAML，不修改游戏核心文件、不影响游戏机制，也不提供任何形式的不公平优势。
 
 与此相反，游戏作弊器通常会修改游戏的核心文件，或者以某种方式影响游戏的机制，以提供不公平的优势。这种行为不仅违反了游戏的服务条款，也破坏了游戏的公平性和玩家的游戏体验。
 
@@ -138,6 +173,8 @@ _谢谢关注！_
 **解决方案**：您可以参考视频教程 [![youtube](https://img.shields.io/badge/YouTube_版本-FF0000?logo=youtube)](https://youtu.be/gNkLY6EAsaU?si=Q-WdWD7Jt7Oyik_w) 或 [![Bilibili](https://img.shields.io/badge/Bilibili_版本-white?logo=bilibili)](https://www.bilibili.com/video/BV1Zs421P7EB) 手动修改游戏语言。
 
 如果依然有问题，请在 [Discussions](https://github.com/ChenglongMa/LOLauncher/discussions) 或 [Issues](https://github.com/ChenglongMa/LOLauncher/issues) 中讨论，也可以给我发邮件 [chenglong.m_at_outlook.com](mailto:chenglong.m@outlook.com)。
+
+如果只有 TFT 没有生效，请在“设置”中执行“自动检测游戏配置文件”，并确认 `%ProgramData%\Riot Games\Metadata\teamfighttactics.live\teamfighttactics.live.product_settings.yaml` 已出现在 `config.json` 的 `SettingFile` 列表中。
 
 ### 2. 运行程序时弹出 `Windows Defender 防病毒` 警告。
 

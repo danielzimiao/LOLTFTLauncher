@@ -5,13 +5,14 @@ import os
 import re
 import shutil
 import stat
-import string
 import subprocess
 import sys
 import threading
 import time
 import webbrowser
 import socket
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from contextlib import contextmanager
 from ctypes import wintypes
 from tkinter import filedialog
@@ -20,23 +21,29 @@ import easygui
 import keyboard
 import mouse
 import yaml
-from github import Github
 from watchdog.events import FileSystemEventHandler
 
-VERSION = '1.2.2'
+VERSION = '1.3'
 APP_NAME = 'LOLauncher'
-REPO_NAME = 'ChenglongMa/LOLauncher'
-SUPPORTED_PATCH_LINEs = ['live', 'pbe']
+REPO_NAME = 'danielzimiao/TFTLauncher'
+SUPPORTED_PRODUCTS = ['league_of_legends', 'teamfighttactics']
+PRODUCT_DISPLAY_NAMES = {
+    'league_of_legends': '英雄联盟',
+    'teamfighttactics': '云顶之弈',
+}
+SUPPORTED_PATCH_LINES = ['live', 'pbe']
+DEFAULT_PRODUCT = 'league_of_legends'
 DEFAULT_PATCH_LINE = 'live'
 DEFAULT_DRIVE = r"C:"
-# DEFAULT_METADATA_DIR = rf"{DEFAULT_DRIVE}\ProgramData\Riot Games\Metadata\league_of_legends.live"
-# DEFAULT_METADATA_FILE = f"{DEFAULT_METADATA_DIR}\\league_of_legends.live.product_settings.yaml"
-# PBE_METADATA_DIR = rf"{DEFAULT_DRIVE}\ProgramData\Riot Games\Metadata\league_of_legends.pbe"
-# PBE_METADATA_FILE = f"{PBE_METADATA_DIR}\\league_of_legends.pbe.product_settings.yaml"
-METADATA_DIR_FORMAT = r"{drive}\ProgramData\Riot Games\Metadata\league_of_legends.{patch_line}"
-METADATA_FILE_FORMAT = "league_of_legends.{patch_line}.product_settings.yaml"
-DEFAULT_METADATA_DIR = METADATA_DIR_FORMAT.format(drive=DEFAULT_DRIVE, patch_line=DEFAULT_PATCH_LINE)
-DEFAULT_METADATA_FILE = os.path.join(DEFAULT_METADATA_DIR, METADATA_FILE_FORMAT.format(patch_line=DEFAULT_PATCH_LINE))
+PROGRAM_DATA_DIR = os.environ.get('PROGRAMDATA', rf"{DEFAULT_DRIVE}\ProgramData")
+METADATA_ROOT = os.path.join(PROGRAM_DATA_DIR, "Riot Games", "Metadata")
+METADATA_DIR_FORMAT = os.path.join(METADATA_ROOT, "{product}.{patch_line}")
+METADATA_FILE_FORMAT = "{product}.{patch_line}.product_settings.yaml"
+DEFAULT_METADATA_DIR = METADATA_DIR_FORMAT.format(
+    product=DEFAULT_PRODUCT, patch_line=DEFAULT_PATCH_LINE)
+DEFAULT_METADATA_FILE = os.path.join(DEFAULT_METADATA_DIR, METADATA_FILE_FORMAT.format(
+    product=DEFAULT_PRODUCT, patch_line=DEFAULT_PATCH_LINE))
+UPDATE_CHECK_TIMEOUT_SECONDS = 3
 
 LOCALE_CODES = {
     "zh_CN": "简体中文（国服）",
@@ -196,38 +203,50 @@ def read_json(file_path):
         return {}
 
 
-def get_updates(repo_name, current_version):
-    try:
-        g = Github(retry=None)
-        repo = g.get_repo(repo_name)
+def version_key(version):
+    numbers = [int(part) for part in re.findall(r'\d+', version or '')]
+    return tuple((numbers + [0, 0, 0])[:3])
 
-        latest_release = repo.get_latest_release()
-        if latest_release.tag_name > current_version:
-            return latest_release.tag_name, latest_release.html_url
-    except Exception as e:
+
+def get_updates(repo_name, current_version, timeout=UPDATE_CHECK_TIMEOUT_SECONDS):
+    try:
+        request = Request(
+            f"https://api.github.com/repos/{repo_name}/releases/latest",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"{APP_NAME}/{current_version}",
+            })
+        with urlopen(request, timeout=timeout) as response:
+            latest_release = json.load(response)
+        latest_version = latest_release.get('tag_name', '')
+        if version_key(latest_version) > version_key(current_version):
+            return latest_version, latest_release.get('html_url')
+    except (HTTPError, URLError, TimeoutError, ValueError, OSError):
         pass
 
     return None, None
 
 
+def prompt_for_update(new_version, html_url):
+    print(f"发现新版本: {new_version}\n{html_url}")
+    decision = easygui.buttonbox(
+        f"发现新版本: {new_version}\n您要更新吗？",
+        "发现新版本",
+        ["前往下载", "继续使用该版本"])
+    if decision == "前往下载":
+        print("前往下载...")
+        webbrowser.open(html_url)
+    else:
+        print("继续使用该版本")
+
+
 def check_for_updates(no_new_version_callback=None):
     new_version, html_url = get_updates(REPO_NAME, VERSION)
-
     if new_version:
-        print(f"发现新版本: {new_version}\n{html_url}")
-        decision = easygui.buttonbox(
-            f"发现新版本: {new_version}\n您要更新吗？",
-            "发现新版本",
-            ["前往下载", "继续使用该版本"])
-        if decision.lower() == "前往下载":
-            print("前往下载...")
-            webbrowser.open(html_url)
-            sys.exit()
-        else:
-            print("继续使用该版本")
-    else:
-        no_new_version_callback = no_new_version_callback or print
-        no_new_version_callback()
+        prompt_for_update(new_version, html_url)
+        return
+    no_new_version_callback = no_new_version_callback or print
+    no_new_version_callback()
 
 
 def normalize_file_path(file_path):
@@ -242,25 +261,32 @@ def filter_existing_files(file_paths):
 
 
 def filter_valid_metadata_files(*file_paths):
-    return list(set(filter(is_valid_metadata_file, map(normalize_file_path, file_paths))))
+    valid_files = []
+    seen_files = set()
+    for file_path in file_paths:
+        if not file_path:
+            continue
+        normalized_file = normalize_file_path(file_path)
+        if normalized_file not in seen_files and is_valid_metadata_file(normalized_file):
+            seen_files.add(normalized_file)
+            valid_files.append(normalized_file)
+    return valid_files
+
+
+def get_metadata_product(file_path):
+    filename = os.path.basename(file_path).lower()
+    for product in SUPPORTED_PRODUCTS:
+        if filename.startswith(f"{product}."):
+            return product
+    return None
 
 
 def to_list(data):
-    if isinstance(data, list):
-        return data
-    else:
-        return [data]
-
-
-def get_drives():
-    drives = []
-    bitmask = ctypes.windll.kernel32.GetLogicalDrives()
-    for letter in string.ascii_uppercase:
-        if bitmask & 1:
-            drives.append(letter + ':\\')
-        bitmask >>= 1
-
-    return drives
+    if data is None or data == '':
+        return []
+    if isinstance(data, (list, tuple)):
+        return list(data)
+    return [data]
 
 
 def backup_file(file_path):
@@ -298,17 +324,24 @@ def write_yaml(file_path, data):
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
 
 
-def open_metadata_file_dialog(title, file_types, initial_dir=DEFAULT_METADATA_DIR, initial_file=DEFAULT_METADATA_FILE):
-    selected_file = filedialog.askopenfilename(title=title, filetypes=file_types, initialdir=initial_dir, initialfile=initial_file)
-    return selected_file if is_valid_metadata_file(selected_file) else None
+def open_metadata_file_dialog(title, file_types, initial_dir=DEFAULT_METADATA_DIR,
+                              initial_file=DEFAULT_METADATA_FILE, multiple=False):
+    dialog = filedialog.askopenfilenames if multiple else filedialog.askopenfilename
+    selected = dialog(title=title, filetypes=file_types, initialdir=initial_dir, initialfile=initial_file)
+    selected_files = filter_valid_metadata_files(*to_list(selected))
+    if multiple:
+        return selected_files
+    return selected_files[0] if selected_files else None
 
 
 def find_setting_files():
     while True:
-        selected_file = open_metadata_file_dialog(title="请选择 league_of_legends.[live|pbe].product_settings.yaml 文件",
-                                                  file_types=[('Riot 配置文件', '*.yaml'), ('所有文件', '*.*')],
-                                                  initial_dir=DEFAULT_METADATA_DIR, initial_file=DEFAULT_METADATA_FILE)
-        selected_files = filter_valid_metadata_files(*to_list(selected_file))
+        selected_files = open_metadata_file_dialog(
+            title="请选择英雄联盟和/或云顶之弈的 product_settings.yaml 文件",
+            file_types=[('Riot 配置文件', '*.yaml'), ('所有文件', '*.*')],
+            initial_dir=DEFAULT_METADATA_DIR,
+            initial_file=DEFAULT_METADATA_FILE,
+            multiple=True)
         if len(selected_files) > 0:
             return selected_files
         else:
@@ -334,20 +367,21 @@ def is_valid_metadata_file(filename):
     return is_valid_settings(settings)
 
 
-def detect_metadata_file():
+def detect_metadata_file(metadata_root=None):
     print("Detecting metadata file...")
     setting_files = []
+    metadata_root = metadata_root or METADATA_ROOT
 
-    filename_suffixes = [os.path.join(
-        METADATA_DIR_FORMAT.format(drive="", patch_line=patch_line),
-        METADATA_FILE_FORMAT.format(patch_line=patch_line)
-    ) for patch_line in SUPPORTED_PATCH_LINEs]
-    for drive in get_drives():
-        for filename_suffix in filename_suffixes:
-            filename = os.path.join(drive, filename_suffix)
+    for product in SUPPORTED_PRODUCTS:
+        for patch_line in SUPPORTED_PATCH_LINES:
+            product_id = f"{product}.{patch_line}"
+            filename = os.path.join(
+                metadata_root,
+                product_id,
+                f"{product_id}.product_settings.yaml")
             if is_valid_metadata_file(filename):
                 print(f"Found metadata file: {filename}")
-                setting_files.append(filename)
+                setting_files.append(normalize_file_path(filename))
     return setting_files
 
 
@@ -355,9 +389,10 @@ def verify_metadata_file(config) -> [str]:
     setting_files = detect_metadata_file()
     setting_files = filter_valid_metadata_files(*to_list(config.get('SettingFile', [])), *setting_files)
     if not setting_files or len(setting_files) < 1:
-        decision = easygui.buttonbox("该文件通常位于：\n\n"
-                                     rf"[系统盘]:{DEFAULT_METADATA_DIR}"
-                                     rf"{DEFAULT_METADATA_FILE}",
+        decision = easygui.buttonbox("配置文件通常位于：\n\n"
+                                     "[系统盘]:\\ProgramData\\Riot Games\\Metadata\\"
+                                     "[league_of_legends|teamfighttactics].[live|pbe]\\"
+                                     "*.product_settings.yaml",
                                      "未找到配置文件，请手动选择", ["手动选择", "退出"])
         if decision.lower() == '手动选择':
             setting_files = find_setting_files()

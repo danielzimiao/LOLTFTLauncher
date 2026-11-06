@@ -34,17 +34,20 @@ Remove-Folders -Paths @(".\dist", ".\build", ".\$EnvName")
 Write-Output "Building..."
 
 Write-Output "Creating Virtual Environment..."
-.\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\pip.exe install -r requirements-dev.txt
-.\venv\Scripts\python.exe -m venv $EnvName
+if (Get-Command py -ErrorAction SilentlyContinue) {
+    & py -3 -m venv $EnvName
+} elseif (Get-Command python -ErrorAction SilentlyContinue) {
+    & python -m venv $EnvName
+} else {
+    throw "Python 3 was not found. Install Python 3 and try again."
+}
 
-Write-Output "Activating Virtual Environment..."
-$ActivateScript = Join-Path -Path ".\" -ChildPath "$EnvName\Scripts\Activate.ps1"
-. $ActivateScript
+$VenvPython = ".\$EnvName\Scripts\python.exe"
+$VenvPip = ".\$EnvName\Scripts\pip.exe"
 
 Write-Output "Installing Dependencies..."
-& .\$EnvName\Scripts\python.exe -m pip install --upgrade pip
-& .\$EnvName\Scripts\pip.exe install -r requirements.txt
+& $VenvPython -m pip install --upgrade pip
+& $VenvPip install -r requirements.txt -r requirements-dev.txt
 
 Write-Output "Building Executable..."
 
@@ -91,7 +94,7 @@ if ($Dev)
 else
 {
     Write-Output "Creating Version File..."
-    & .\venv\Scripts\create-version-file.exe metadata.yml --outfile file_version_info.txt
+    & .\$EnvName\Scripts\create-version-file.exe metadata.yml --outfile file_version_info.txt
 
     Write-Output "Setting Version..."
     & .\$EnvName\Scripts\pyi-set_version.exe ./file_version_info.txt ./dist/LOLauncher.exe
