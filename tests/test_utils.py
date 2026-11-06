@@ -22,8 +22,8 @@ class MetadataDetectionTests(unittest.TestCase):
         self.assertTrue(any("teamfighttactics.pbe" in path for path in detected))
 
     def test_version_comparison_handles_v_prefix(self):
-        self.assertGreater(utils.version_key("v1.3.1"), utils.version_key("1.3.0"))
-        self.assertEqual(utils.version_key("v1.3.1"), utils.version_key("1.3.1"))
+        self.assertGreater(utils.version_key("v1.3"), utils.version_key("1.2.2"))
+        self.assertEqual(utils.version_key("v1.3"), utils.version_key("1.3"))
 
     def test_to_list_handles_empty_and_multiple_selections(self):
         self.assertEqual([], utils.to_list(None))

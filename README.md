@@ -18,9 +18,9 @@
 * 该程序用于修改英雄联盟和独立版云顶之弈（Teamfight Tactics）的语言，例如选择 **简体中文（国服）**。
 * 程序会自动检测 LOL 与 TFT 的 `live` / `pbe` 配置文件；默认点击一次启动按钮会将两者统一修改为所选语言并持续监控，防止 Riot 更新配置后恢复默认值。
 * 自 [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) 版本后，该程序新增 **一键喊话**。
-* 该程序目前面向 Windows 10/11；独立 TFT 客户端适配从 v1.3.0 开始提供。
+* 该程序目前面向 Windows 10/11；独立 TFT 客户端适配从 v1.3 开始提供。
 
-## v1.3.0：独立 TFT 客户端适配
+## v1.3：独立 TFT 客户端适配与启动优化
 
 Riot 将 TFT 拆分为独立客户端后，它使用单独的产品配置：
 
@@ -37,7 +37,7 @@ Riot 将 TFT 拆分为独立客户端后，它使用单独的产品配置：
 > [!IMPORTANT]
 > 首次测试建议先完全退出 Riot Client、LOL 与 TFT，再运行本程序。点击启动后请保持程序在后台，等待 Riot Client 完成所需语言资源更新，然后进入游戏检查文本。`一键喊话`仍是英雄联盟专用功能。
 
-### v1.3.1：启动性能优化
+### 启动性能优化
 
 - 配置探测直接读取 Windows 的 `%ProgramData%\Riot Games\Metadata`，不再遍历所有逻辑盘和离线映射盘。
 - 主界面会先显示，再在后台查找客户端；查找期间显示进度条并暂时禁用启动按钮，避免用户因无反馈而反复双击。
@@ -73,18 +73,18 @@ _谢谢关注！_
 
 ## 版本比较
 
-| 功能 | [v1.0.1](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.1) | [v1.0.2](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.2) | [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) | [v1.2.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.2.0) | v1.3.0 | v1.3.1 |
-|---|---:|---:|---:|---:|---:|---:|
-| Windows 10 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Windows 11 | X | ✔ | ✔ | ✔ | ✔ | ✔ |
-| **非**管理员权限 | X | ✔ | ✔ | ✔ | ✔ | ✔ |
-| 后台运行 | X | ✔ | ✔ | ✔ | ✔ | ✔ |
-| 自动更新 | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| 一键喊话 | X | X | ✔ | ✔ | ✔ | ✔ |
-| 暗黑模式 | X | X | X | ✔ | ✔ | ✔ |
-| 独立云顶之弈客户端支持 | X | X | X | X | ✔ | ✔ |
-| 英雄联盟 & 云顶之弈适用范围选择 | X | X | X | X | ✔ | ✔ |
-| 快速启动优化 | X | X | X | X | X | ✔ |
+| 功能 | [v1.0.1](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.1) | [v1.0.2](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.0.2) | [v1.1.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.1.0) | [v1.2.0](https://github.com/ChenglongMa/LOLauncher/releases/tag/1.2.0) | v1.3 |
+|---|---:|---:|---:|---:|---:|
+| Windows 10 | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Windows 11 | X | ✔ | ✔ | ✔ | ✔ |
+| **非**管理员权限 | X | ✔ | ✔ | ✔ | ✔ |
+| 后台运行 | X | ✔ | ✔ | ✔ | ✔ |
+| 自动更新 | ✔ | ✔ | ✔ | ✔ | ✔ |
+| 一键喊话 | X | X | ✔ | ✔ | ✔ |
+| 暗黑模式 | X | X | X | ✔ | ✔ |
+| 独立云顶之弈客户端支持 | X | X | X | X | ✔ |
+| 英雄联盟 & 云顶之弈适用范围选择 | X | X | X | X | ✔ |
+| 快速启动优化 | X | X | X | X | ✔ |
 
 
 ### 注意 

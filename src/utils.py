@@ -23,7 +23,7 @@ import mouse
 import yaml
 from watchdog.events import FileSystemEventHandler
 
-VERSION = '1.3.1'
+VERSION = '1.3'
 APP_NAME = 'LOLauncher'
 REPO_NAME = 'danielzimiao/TFTLauncher'
 SUPPORTED_PRODUCTS = ['league_of_legends', 'teamfighttactics']
