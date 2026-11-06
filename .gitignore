@@ -124,7 +124,7 @@ celerybeat.pid
 .venv
 env/
 venv/
-prod_venv/
+prod_venv*/
 ENV/
 env.bak/
 venv.bak/
@@ -160,3 +160,6 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 file_version_info.txt
+build-r*/
+dist-r*/
+file_version_info_r*.txt
