@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox, font
 import sv_ttk
 
 import pystray
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 from watchdog.observers import Observer
 
 from assets import get_asset
@@ -42,7 +42,7 @@ class App:
         change_font("Microsoft YaHei UI")
         self.root.title(f"{APP_NAME} v{VERSION}")
         self.window_width = 350
-        self.window_height = 490
+        self.window_height = 450
         self.control_padding = 10
         self.layout_padding = 15
 
@@ -147,7 +147,8 @@ class App:
         self.theme = sv_ttk.get_theme()
         self.quick_chat_warning_label.config(background=THEME_COLOR[self.theme]["warning_bg"], foreground=THEME_COLOR[self.theme]["warning_fg"])
         self.quick_chat_warning_label.tag_config("link", foreground=THEME_COLOR[self.theme]["accent"], underline=True)
-        self.draw_launch_button()
+        self.create_custom_button_style()
+        self.refresh_launch_button_image()
 
     def create_locale_groupbox(self):
         self.locale_groupbox = ttk.LabelFrame(self.root, text="语言设置", style='Card.TFrame')
@@ -240,120 +241,61 @@ class App:
             create_quick_chat_file(CONFIG_FILENAME)
         subprocess.run(['notepad.exe', QUICK_CHAT_FILENAME], check=False)
 
-    def get_launch_button_colors(self, state="normal"):
+    def create_custom_button_style(self):
         style = ttk.Style()
-        fallback = {
-            "light": {
-                "normal": "#005fb8",
-                "active": "#1975c5",
-                "pressed": "#004c93",
-                "disabled": "#d6d6d6",
-                "foreground": "#ffffff",
-                "disabled_foreground": "#767676",
-                "surface": "#f9f9f9",
-            },
-            "dark": {
-                "normal": "#60cdff",
-                "active": "#76d5ff",
-                "pressed": "#4cb4e1",
-                "disabled": "#3a3a3a",
-                "foreground": "#000000",
-                "disabled_foreground": "#8a8a8a",
-                "surface": "#1c1c1c",
-            },
-        }
-        palette = fallback["dark" if "dark" in self.theme.lower() else "light"]
-        background = palette[state]
-        foreground = palette["disabled_foreground"] if state == "disabled" else palette["foreground"]
-        surface = style.lookup("TFrame", "background") or palette["surface"]
-        return background, foreground, surface
+        style.configure('CustomAccent.TButton', padding=(8, 3))
 
-    def draw_launch_button(self, state="normal"):
+    @staticmethod
+    def load_launch_button_font(size, bold=False):
+        windows_dir = os.environ.get("WINDIR", r"C:\Windows")
+        font_name = "msyhbd.ttc" if bold else "msyh.ttc"
+        font_path = os.path.join(windows_dir, "Fonts", font_name)
+        try:
+            return ImageFont.truetype(font_path, size)
+        except OSError:
+            return ImageFont.load_default()
+
+    def create_launch_button_image(self):
+        width, height = 238, 50
+        image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(image)
+        is_dark = "dark" in self.theme.lower()
+        foreground = "#f3f3f3" if is_dark else "#1f1f1f"
+        divider = "#777777" if is_dark else "#9a9a9a"
+
+        with Image.open(get_asset("button_icon.png")) as source_icon:
+            icon = source_icon.convert("RGBA")
+            icon.thumbnail((44, 46), Image.Resampling.LANCZOS)
+        image.alpha_composite(icon, (0, (height - icon.height) // 2))
+
+        game_font = self.load_launch_button_font(12, bold=True)
+        launch_font = self.load_launch_button_font(17, bold=True)
+        draw.text((96, 14), "英雄联盟", font=game_font, fill=foreground, anchor="mm")
+        draw.text((96, 36), "云顶之弈", font=game_font, fill=foreground, anchor="mm")
+        draw.line((150, 8, 150, height - 8), fill=divider, width=1)
+        draw.text((196, height // 2), "启动！", font=launch_font, fill=foreground, anchor="mm")
+        return ImageTk.PhotoImage(image, master=self.root)
+
+    def refresh_launch_button_image(self):
         if not hasattr(self, "launch_button"):
             return
-        if self.metadata_loading:
-            state = "disabled"
-        width = max(self.launch_button.winfo_width(), self.window_width - (self.layout_padding * 2))
-        height = 72
-        background, foreground, surface = self.get_launch_button_colors(state)
-        self.launch_button.configure(background=surface)
-        self.launch_button.delete("all")
-
-        radius = 9
-        left = 1
-        top = 1
-        right = width - 1
-        bottom = height - 1
-        points = [
-            left + radius, top,
-            right - radius, top,
-            right, top,
-            right, top + radius,
-            right, bottom - radius,
-            right, bottom,
-            right - radius, bottom,
-            left + radius, bottom,
-            left, bottom,
-            left, bottom - radius,
-            left, top + radius,
-            left, top,
-        ]
-        self.launch_button.create_polygon(points, smooth=True, fill=background, outline=background)
-
-        divider_x = int(width * 0.60)
-        left_center_x = int(width * 0.30)
-        right_center_x = int(width * 0.81)
-        self.launch_button.create_text(
-            left_center_x, 23,
-            text="英雄联盟",
-            fill=foreground,
-            font=("Microsoft YaHei UI", 12, "bold"))
-        self.launch_button.create_text(
-            left_center_x, 49,
-            text="云顶之弈",
-            fill=foreground,
-            font=("Microsoft YaHei UI", 12, "bold"))
-        self.launch_button.create_line(
-            divider_x, 13, divider_x, height - 13,
-            fill=foreground,
-            width=1)
-        self.launch_button.create_text(
-            right_center_x, height // 2,
-            text="启动！",
-            fill=foreground,
-            font=("Microsoft YaHei UI", 18, "bold"))
-
-    def on_launch_button_release(self, event):
-        if self.metadata_loading:
-            self.update_status("正在查找客户端，请稍候...")
-            self.draw_launch_button("disabled")
-            return
-        self.draw_launch_button("active")
-        if 0 <= event.x <= self.launch_button.winfo_width() and 0 <= event.y <= self.launch_button.winfo_height():
-            self.start()
+        self.launch_button_image = self.create_launch_button_image()
+        self.launch_button.configure(image=self.launch_button_image)
 
     def create_launch_button(self):
-        self.launch_button = tk.Canvas(
+        self.create_custom_button_style()
+        self.launch_button_image = self.create_launch_button_image()
+        self.launch_button = ttk.Button(
             self.root,
-            height=72,
+            image=self.launch_button_image,
+            command=self.start,
+            style="CustomAccent.TButton",
+            state=tk.DISABLED if self.metadata_loading else tk.NORMAL,
             cursor="hand2",
-            highlightthickness=0,
             takefocus=True)
         self.launch_button.pack(
             side=tk.BOTTOM,
-            fill=tk.X,
-            padx=self.layout_padding,
             pady=self.layout_padding)
-        self.launch_button.bind("<Configure>", lambda event: self.draw_launch_button())
-        self.launch_button.bind("<Enter>", lambda event: self.draw_launch_button("active"))
-        self.launch_button.bind("<Leave>", lambda event: self.draw_launch_button())
-        self.launch_button.bind("<ButtonPress-1>", lambda event: self.draw_launch_button("pressed"))
-        self.launch_button.bind("<ButtonRelease-1>", self.on_launch_button_release)
-        self.launch_button.bind("<FocusIn>", lambda event: self.draw_launch_button("active"))
-        self.launch_button.bind("<FocusOut>", lambda event: self.draw_launch_button())
-        self.launch_button.bind("<Return>", lambda event: self.start())
-        self.launch_button.bind("<space>", lambda event: self.start())
-        self.draw_launch_button()
 
     def create_status_bar(self):
         self.status_var = tk.StringVar(value="准备就绪")
@@ -530,8 +472,7 @@ class App:
             pady=(0, self.control_padding),
             before=self.launch_button)
         self.metadata_progress.start(12)
-        self.launch_button.configure(cursor="")
-        self.draw_launch_button("disabled")
+        self.launch_button.configure(state=tk.DISABLED, cursor="")
         self.update_status("正在查找英雄联盟 & 云顶之弈客户端...")
 
         def detect_metadata():
@@ -558,8 +499,7 @@ class App:
         self.metadata_loading = False
         self.metadata_progress.stop()
         self.metadata_progress.pack_forget()
-        self.launch_button.configure(cursor="hand2")
-        self.draw_launch_button()
+        self.launch_button.configure(state=tk.NORMAL, cursor="hand2")
 
         if error:
             self.update_status("查找客户端配置时出现错误")
